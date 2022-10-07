@@ -150,7 +150,7 @@ class Player implements PlayerStrategy {
   // Check if the player can stop (i.e. the FSM can dispatch this event)
   player.can('stop'); // => true
 
-  // Break the door, but don't wait.
+  // Kill the player, but don't wait.
   await player.die();
 
   // Did we reach the final state?
