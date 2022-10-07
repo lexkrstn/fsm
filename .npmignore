@@ -1,0 +1,9 @@
+/.vscode
+/node_modules
+/dist/*.spec.d.ts
+/dist/*.spec.js
+/dist/*.spec.js.map
+.DS_Store
+.eslintrc.json
+.gitignore
+jest.config.js

@@ -1,0 +1,22 @@
+{
+  "extends": [
+    "airbnb-typescript/base"
+  ],
+  "plugins": [
+    "@typescript-eslint",
+    "filenames"
+  ],
+  "env": {
+    "node": true
+  },
+  "parserOptions": {
+    "ecmaVersion": 2020,
+    "sourceType": "module",
+    "project": "./tsconfig.json"
+  },
+  "rules": {
+    "no-console": "off",
+    "filenames/match-regex": [2, "^[a-z]+.*[a-z]*$"],
+    "filenames/match-exported": 2
+  }
+}
