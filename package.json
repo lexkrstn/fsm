@@ -1,6 +1,6 @@
 {
   "name": "@lexkrstn/fsm",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A strongly typed finite state machine for TypeScript/JavaScript with zero dependencies.",
   "main": "./dist/fsm.js",
   "typings": "./dist/fsm.d.ts",
