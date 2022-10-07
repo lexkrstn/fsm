@@ -1,118 +1,188 @@
-import { Event, FSM } from './fsm';
+/* eslint-disable max-classes-per-file */
+/* eslint-disable class-methods-use-this */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import { Event, EventType, FSM } from './fsm';
 
-type DoorStates = 'closing' | 'closed' | 'opening' | 'open' | 'breaking' | 'broken';
-
-type DoorEvents = Event<'open'> | Event<'opened'> | Event<'close'>
-  | Event<'closed'> | Event<'break'> | Event<'broken'>;
-
+// A helper function.
 function timeout(ms: number = 10) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-class Door extends FSM<DoorStates, DoorEvents> {
-  public constructor(init: DoorStates = 'closed') {
-    super(init);
+// Declare states and events.
+type PlayerStates = 'staying' | 'running' | 'dead';
+type PlayerEvents = Event<'stop'> | Event<'run', [number, number]> | Event<'die'>;
 
-    /* eslint-disable no-multi-spaces */
-    this.add([
-      // from       event      to           callback
-      ['closed',    'open',    'opening',   this.onOpen.bind(this)],
-      ['opening',   'opened',  'open',      this.justLog.bind(this)],
-      ['open',      'close',   'closing',   this.onClose.bind(this)],
-      ['closing',   'closed',  'closed',    this.justLog.bind(this)],
-      ['open',      'break',   'breaking',  this.onBreak.bind(this)],
-      ['breaking',  'broken',  'broken'],
-      ['closed',    'break',   'breaking',  this.onBreak.bind(this)],
-      ['breaking',  'broken',  'broken'],
-    ]);
-    /* eslint-enable no-multi-spaces */
-  }
+// Define player strategies
+interface PlayerStrategy {
+  onUpdate(dt: number): void;
+}
 
-  public open() { return this.dispatch('open'); }
-
-  public close() { return this.dispatch('close'); }
-
-  public break() { return this.dispatch('break'); }
-
-  public isBroken(): boolean { return this.getState() === 'broken'; }
-
-  public isOpen(): boolean { return this.getState() === 'open'; }
-
-  private async onOpen() {
-    await timeout();
-    return this.dispatch('opened');
-  }
-
-  private async onClose() {
-    await timeout();
-    return this.dispatch('closed');
-  }
-
-  private async onBreak() {
-    await timeout();
-    return this.dispatch('broken');
-  }
-
-  private justLog() {
-    console.log(`${this.getState()}`);
+class RunStrategy implements PlayerStrategy {
+  public onUpdate(dt: number) {
+    console.log('running');
   }
 }
 
-describe('FSM tests', () => {
-  test('test Opening a Closed door', async () => {
-    const door = new Door();
+class StayStrategy implements PlayerStrategy {
+  public onUpdate(dt: number) {
+    console.log('staying');
+  }
+}
 
-    expect(door.isOpen()).toBeFalsy();
-    expect(door.isBroken()).toBeFalsy();
-    expect(door.can('open')).toBeTruthy();
+class DeadStrategy implements PlayerStrategy {
+  public onUpdate(dt: number) {
+    console.log('dead');
+  }
+}
 
-    await door.open();
-    expect(door.isOpen()).toBeTruthy();
-  });
+function playerStrategyFactory(state: PlayerStates): PlayerStrategy {
+  switch (state) {
+    case 'staying': return new StayStrategy();
+    case 'running': return new RunStrategy();
+    case 'dead': return new DeadStrategy();
+    default:
+      throw new Error(`Unknown state: ${state}`);
+  }
+}
 
-  test('test a failed event', (done) => {
-    const door = new Door('open');
-    expect(door.can('open')).toBeFalsy();
+class Player implements PlayerStrategy {
+  private fsm: FSM<PlayerStates, PlayerEvents>;
 
-    door.open().then(() => {
-      expect('should never get here 1').toBeFalsy();
-    }).catch(() => {
-      // we are good.
-      done();
+  private strategy: PlayerStrategy = new StayStrategy();
+
+  public constructor(initialState: PlayerStates = 'staying') {
+    this.strategy = playerStrategyFactory(initialState);
+    this.fsm = new FSM<PlayerStates, PlayerEvents>(
+      initialState,
+      [
+        ['running', 'stop', 'staying', this.transitionToStaying],
+        ['staying', 'run', 'running', this.transitionToRunning],
+        ['*', 'die', 'dead', this.transitionToDead],
+      ],
+    );
+  }
+
+  public stop() { return this.fsm.dispatch('stop'); }
+
+  public die() { return this.fsm.dispatch('die'); }
+
+  public run(x: number, y: number) { return this.fsm.dispatch('run', x, y); }
+
+  public isRunning() { return this.fsm.getState() === 'running'; }
+
+  public isStaying() { return this.fsm.getState() === 'staying'; }
+
+  public isDead() { return this.fsm.getState() === 'dead'; }
+
+  public isControllable() { return !this.fsm.isFinal(); }
+
+  public can(action: EventType<PlayerEvents>) { return this.fsm.can(action); }
+
+  public onUpdate(dt: number) {
+    this.strategy.onUpdate(dt);
+  }
+
+  private transitionToStaying = async () => {
+    this.strategy = new StayStrategy();
+    await timeout(); // Emulate some async work
+  };
+
+  private transitionToRunning = async (x: number, y: number) => {
+    this.strategy = new RunStrategy();
+    await timeout(); // Emulate some async work
+  };
+
+  private transitionToDead = () => {
+    this.strategy = new DeadStrategy();
+  };
+}
+
+describe('FSM', () => {
+  describe('constructor()', () => {
+    it('should initialize a player', async () => {
+      const player = new Player();
+
+      expect(player.isStaying()).toBeTruthy();
+      expect(player.isRunning()).toBeFalsy();
+      expect(player.isDead()).toBeFalsy();
     });
   });
 
-  test('test Closing an Open door', async () => {
-    const door = new Door('open');
-    expect(door.isOpen()).toBeTruthy();
+  describe('getState()', () => {
+    it('should return corrent results for staying state', async () => {
+      const player = new Player();
 
-    await door.close();
-    expect(door.isOpen()).toBeFalsy();
+      expect(player.isStaying()).toBeTruthy();
+    });
+
+    it('should return corrent results for running state', async () => {
+      const player = new Player('running');
+
+      expect(player.isRunning()).toBeTruthy();
+    });
   });
 
-  test('test Breaking a door', async () => {
-    const door = new Door();
-    expect(door.isBroken()).toBeFalsy();
+  describe('can()', () => {
+    it('should return corrent results for staying state', async () => {
+      const player = new Player();
 
-    await door.break();
-    expect(door.isBroken()).toBeTruthy();
-    expect(door.isOpen()).toBeFalsy();
+      expect(player.can('run')).toBeTruthy();
+      expect(player.can('die')).toBeTruthy();
+      expect(player.can('stop')).toBeFalsy();
+    });
+
+    it('should return corrent results for running state', async () => {
+      const player = new Player('running');
+
+      expect(player.can('run')).toBeFalsy();
+      expect(player.can('die')).toBeTruthy();
+      expect(player.can('stop')).toBeTruthy();
+    });
+
+    it('should return corrent results for dead state', async () => {
+      const player = new Player('dead');
+
+      expect(player.can('run')).toBeFalsy();
+      expect(player.can('die')).toBeFalsy();
+      expect(player.can('stop')).toBeFalsy();
+    });
   });
 
-  test('Broken door cannot be Opened or Closed', async () => {
-    const door = new Door('broken');
-    expect(door.isBroken()).toBeTruthy();
+  describe('isFinal()', () => {
+    it('should return corrent results for staying state', async () => {
+      const player = new Player();
 
-    await expect(door.open()).rejects.toBeInstanceOf(Error);
+      expect(player.isControllable()).toBeTruthy();
+    });
+
+    it('should return corrent results for running state', async () => {
+      const player = new Player('dead');
+
+      expect(player.isControllable()).toBeFalsy();
+    });
   });
 
-  test('should throw on intermediate state', async () => {
-    const door = new Door('open');
-    expect(door.isOpen()).toBeTruthy();
+  describe('dispatch()', () => {
+    it('should throw an error if the target state is unreachable', () => {
+      const player = new Player('dead');
 
-    const promise = door.close();
-    expect(door.getState() === 'closing').toBeTruthy();
-    expect(door.break()).rejects.toBeInstanceOf(Error);
-    await promise;
+      expect(player.can('run')).toBeFalsy();
+      expect(player.run(0, 0)).rejects.toBeInstanceOf(Error);
+    });
+
+    it('should throw an error if transitioning to current state', () => {
+      const player = new Player('running');
+
+      expect(player.can('run')).toBeFalsy();
+      expect(player.run(0, 0)).rejects.toBeInstanceOf(Error);
+    });
+
+    it('should change the state after resolving', async () => {
+      const player = new Player('running');
+      expect(player.isRunning()).toBeTruthy();
+
+      await player.die();
+      expect(player.isDead()).toBeTruthy();
+    });
   });
 });

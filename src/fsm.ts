@@ -22,21 +22,22 @@ export interface Dispatcher<E extends Event<any, any>> {
 }
 
 export interface Transition<States, Events extends Event<any, any>> {
-  from: States;
+  from: States | '*';
   event: EventType<Events>;
   to: States;
-  cb?: (...args: unknown[]) => Promise<void>;
+  cb?: ((...args: unknown[]) => Promise<void>) | ((...args: unknown[]) => void);
 }
 
 export type TransitionTuple<States, Events extends Event<any, any>> = [
-  States,
+  States | '*',
   EventType<Events>,
   States,
-  ((...args: unknown[]) => Promise<void>)?,
+  (((...args: unknown[]) => Promise<void>) | ((...args: unknown[]) => void))?,
 ];
 
 export class FSM<States, Events extends Event<any, any>> implements Dispatcher<Events> {
   private currentState: States;
+
   private transitions: Transition<States, Events>[] = [];
 
   /**
@@ -77,9 +78,18 @@ export class FSM<States, Events extends Event<any, any>> implements Dispatcher<E
    * that is triggered by the specified event type.
    */
   public can(eventType: EventType<Events>) {
-    return this.transitions.some(
-      (trans) => trans.from === this.currentState && trans.event === eventType,
-    );
+    return this.transitions.some((tran) => {
+      if (tran.event !== eventType) {
+        return false;
+      }
+      if (tran.from !== this.currentState && tran.from !== '*') {
+        return false;
+      }
+      if (tran.to === this.currentState) {
+        return false;
+      }
+      return true;
+    });
   }
 
   /**
@@ -105,7 +115,13 @@ export class FSM<States, Events extends Event<any, any>> implements Dispatcher<E
     return new Promise<void>((resolve, reject) => {
       // find transition
       const found = this.transitions.some((tran) => {
-        if (tran.from !== this.currentState || tran.event !== eventType) {
+        if (tran.event !== eventType) {
+          return false;
+        }
+        if (tran.from !== this.currentState && tran.from !== '*') {
+          return false;
+        }
+        if (tran.to === this.currentState) {
           return false;
         }
         this.currentState = tran.to;
