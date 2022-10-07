@@ -3,106 +3,157 @@
 # Finite State Machine
 
 Finite state machines are useful for modeling complicated flows and keeping
-track of state. FSM is a strongly typed finite state machine for TypeScript that
-is using promises for async operations.
+track of state. The package provides a strongly typed FSM implementation for
+TypeScript and JavaScript.
+
+## Motivation
+
+Theoretically, the FSM must comprise only 2 key elements:
+- states
+- transitions between them
+
+In practice, though, implementations typically have at least one of the
+following flaws:
+1. **Mixing up multiple patterns**, such as inheriting States from Strategies.
+   There is nothing wrong with this approach if you're not planning to reuse
+   FSM anywhere else. But it's a bad idea for a library, because not every
+   problem requires this mix. In the example below I'm demonstrating how to
+   make use of the both patterns together separating the concerns.
+2. **States with onEnter/onExit handlers only**. This approach assumes that
+   these two handlers can independently compose a transition function, which
+   is not the case if the transition depends on both the previous and the
+   next state.
+3. **Making the client to extend a state class**. First, it doesn't make sense
+   to incapsulate each state in a separate class, unless you're mixing it
+   with the Strategy pattern. Secondly, it's not unusual to find youself
+   having to repeat the same blocks of code again and again, especially if the
+   State implementation has the onEnter/onExit handlers for transitions.
+
+All these reasons prompted me to write this library.
 
 ## Features:
 
+- SRP-compliant
 - Type-safe
-- TypeScript-first + JavaScript
 - Only 1 KB (minified)
 - Zero dependencies
-- Synchronous / Asynchronous transitions
-- Simple defnition
-- Hooks after state change and on error
+- Asynchronous transitions
+- Simple state and transition definition
 
 ## Installation:
 
 ```bash
-npm i -S type-safe-fsm
+npm i -S @lexkrstn/fsm
 ```
-## Basic Example:
+## Example:
 
-I'm modeling a "door" here. One can open the door, close it or break it.
-Each action is done asynchronously: when opened it goes into opening state and
-then resolved to open state, etc. Once broken, it reaches a final state.
-Note that the same code can be run in Javascript, just remove the generics.
+In the following example, I'm modeling a Player class for a game.
+Notice how multiple patterns can be used together without mixin conserns.
 
 ```typescript
+// Declare states and events.
+type PlayerStates = 'staying' | 'running' | 'dead';
+type PlayerEvents = Event<'stop'> | Event<'run', [number, number]> | Event<'die'>;
 
-// The states and events for the door.
-type DoorStates = 'closing' | 'closed' | 'opening' | 'open' | 'breaking' | 'broken';
-type DoorEvents = Event<'open'> | Event<'opened'> | Event<'close'>
-  | Event<'closed'> | Event<'break'> | Event<'broken'>;
-
-
-// Initialize the state machine
-const door = new FSM<DoorStates, DoorEvents>(
-  // Initial state
-  'closed',
-  // Transitions
-  [
-    // from       event      to           callback
-    ['closed',    'open',    'opening',   onOpen],
-    ['opening',   'opened',  'open',      justLog],
-    ['open',      'close',   'closing',   onClose],
-    ['closing',   'closed',  'closed',    justLog],
-    ['open',      'break',   'breaking',  onBreak],
-    ['breaking',  'broken',  'broken'],
-    ['closed',    'break',   'breaking',  onBreak],
-    ['breaking',  'broken',  'broken'],
-  ],
-);
-
-// Just a helper function.
-function timeout(ms: number = 10) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+// Define player strategies
+interface PlayerStrategy {
+  onUpdate(dt: number): void;
 }
 
-// The actions are async and return a promise:
-function onOpen(): Promise<void> {
-  console.log('onOpen...');
-  await timeout(); // Emulating some asynchronous action
-  return door.dispatch('opened');
+class RunStrategy implements PlayerStrategy {
+  public onUpdate(dt: number) {
+    console.log('running');
+  }
 }
 
-function onClose(): Promise<void> {
-  console.log('onClose...');
-  await timeout(); // Emulating some asynchronous action
-  return door.dispatch('closed');
+class StayStrategy implements PlayerStrategy {
+  public onUpdate(dt: number) {
+    console.log('staying');
+  }
 }
 
-function onBreak(): Promise<void> {
-  console.log("onBreak...");
-  await timeout(); // Emulating some asynchronous action
-  return door.dispatch('broken');
+class DeadStrategy implements PlayerStrategy {
+  public onUpdate(dt: number) {
+    console.log('dead');
+  }
 }
 
-// Synchronous callback is also ok
-function justLog() {
-  console.log(door.getState());
+function playerStrategyFactory(state: PlayerStates): PlayerStrategy {
+  switch (state) {
+    case 'staying': return new StayStrategy();
+    case 'running': return new RunStrategy();
+    case 'dead': return new DeadStrategy();
+    default:
+      throw new Error(`Unknown state: ${state}`);
+  }
+}
+
+class Player implements PlayerStrategy {
+  private fsm: FSM<PlayerStates, PlayerEvents>;
+
+  private strategy: PlayerStrategy = new StayStrategy();
+
+  public constructor(initialState: PlayerStates = 'staying') {
+    this.strategy = playerStrategyFactory(initialState);
+    this.fsm = new FSM<PlayerStates, PlayerEvents>(
+      initialState,
+      [
+        ['running', 'stop', 'staying', this.transitionToStaying],
+        ['staying', 'run', 'running', this.transitionToRunning],
+        ['*', 'die', 'dead', this.transitionToDead],
+      ],
+    );
+  }
+
+  public stop() { return this.fsm.dispatch('stop'); }
+
+  public die() { return this.fsm.dispatch('die'); }
+
+  public run(x: number, y: number) { return this.fsm.dispatch('run', x, y); }
+
+  public isRunning() { return this.fsm.getState() === 'running'; }
+
+  public isStaying() { return this.fsm.getState() === 'staying'; }
+
+  public isDead() { return this.fsm.getState() === 'dead'; }
+
+  public isControllable() { return !this.fsm.isFinal(); }
+
+  public can(action: EventType<PlayerEvents>) { return this.fsm.can(action); }
+
+  public onUpdate(dt: number) {
+    this.strategy.onUpdate(dt);
+  }
+
+  private transitionToStaying = async () => {
+    this.strategy = new StayStrategy();
+    await timeout(); // Emulate some async work
+  };
+
+  private transitionToRunning = async (x: number, y: number) => {
+    this.strategy = new RunStrategy();
+    await timeout(); // Emulate some async work
+  };
+
+  private transitionToDead = () => {
+    this.strategy = new DeadStrategy();
+  };
 }
 
 (async () => {
-  // Open the door and wait for it to be open
-  await door.dispatch('open');
-  door.getState(); // => 'open'
+  const player = new Player();
+  // Dispatch the 'run' event with 2 parameters (position x, y) and wait
+  // for the transition to complete.
+  await player.run(0, 0);
+  player.isRunning(); // => true
 
-  // Check if the door can be closed
-  door.can('close'); // => true
+  // Check if the player can stop (i.e. the FSM can dispatch this event)
+  player.can('stop'); // => true
 
   // Break the door, but don't wait.
-  door.dispatch('break').then(() => {
-    // did we get to a finite state?
-    door.isFinal(); // => true
-  });
+  await player.die();
 
-  // The door is now in the 'breaking' state. It cannot be closed.
-  try {
-    await door.dispatch('close');
-    assert('should not get here!');
-  } catch (e) {
-    // we're good
-  }
+  // Did we reach the final state?
+  player.isControllable(); // => false
 })();
 ```
