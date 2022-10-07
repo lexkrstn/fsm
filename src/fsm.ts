@@ -44,7 +44,7 @@ export class FSM<States, Events extends Event<any, any>> implements Dispatcher<E
    */
   public constructor(
     initialState: States,
-    transitions: Transition<States, Events>[] = [],
+    transitions: (Transition<States, Events> | TransitionTuple<States, Events>)[] = [],
   ) {
     this.currentState = initialState;
     this.add(transitions);
