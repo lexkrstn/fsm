@@ -48,7 +48,7 @@ npm i -S @lexkrstn/fsm
 ## Example:
 
 In the following example, I'm modeling a Player class for a game.
-Notice how multiple patterns can be used together without mixin conserns.
+Notice how multiple patterns can be used together without mixing conserns.
 
 ```typescript
 // Declare states and events.
