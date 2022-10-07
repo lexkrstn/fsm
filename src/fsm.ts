@@ -21,19 +21,19 @@ export interface Dispatcher<E extends Event<any, any>> {
   ): Promise<void>;
 }
 
-export interface Transition<States, Events extends Event<any, any>> {
+export type Transition<States, E extends Event<any, any>> = E extends E ? {
   from: States | '*';
-  event: EventType<Events>;
+  event: E['type'];
   to: States;
-  cb?: ((...args: unknown[]) => Promise<void>) | ((...args: unknown[]) => void);
-}
+  cb?: ((...args: E['payload']) => Promise<void>) | ((...args: E['payload']) => void);
+} : never;
 
-export type TransitionTuple<States, Events extends Event<any, any>> = [
+export type TransitionTuple<States, E extends Event<any, any>> = E extends E ? [
   States | '*',
-  EventType<Events>,
+  E['type'],
   States,
-  (((...args: unknown[]) => Promise<void>) | ((...args: unknown[]) => void))?,
-];
+  (((...args: E['payload']) => Promise<void>) | ((...args: E['payload']) => void))?,
+] : never;
 
 export class FSM<States, Events extends Event<any, any>> implements Dispatcher<Events> {
   private currentState: States;
@@ -62,7 +62,7 @@ export class FSM<States, Events extends Event<any, any>> implements Dispatcher<E
           event: t[1],
           to: t[2],
           cb: t.length > 3 ? t[3] : undefined,
-        };
+        } as Transition<States, Events>;
       }
       return t;
     }));
